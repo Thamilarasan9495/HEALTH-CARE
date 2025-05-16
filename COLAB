@@ -1,1 +1,146 @@
+import pandas as pd
 
+try:
+    df = pd.read_csv('Dataset--Heart-Disease-Prediction-using-ANN _CSV.csv')
+    display(df.head())
+    print(df.shape)
+except FileNotFoundError:
+    print("Error: 'Dataset--Heart-Disease-Prediction-using-ANN _CSV.csv' not found.")
+    df = None
+except Exception as e:
+    print(f"An error occurred: {e}")
+    df = None
+# Get DataFrame info
+print(df.info())
+
+# Descriptive statistics for numerical features
+print(df.describe())
+
+# Explore categorical features
+for col in ['sex', 'cp', 'fbs', 'restecg', 'exang', 'slope', 'ca', 'thal', 'target']:
+    print(f"\nValue counts for {col}:\n{df[col].value_counts()}")
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Histograms for numerical features
+plt.figure(figsize=(15, 10))
+for i, col in enumerate(['age', 'trestbps', 'chol', 'thalach', 'oldpeak']):
+    plt.subplot(2, 3, i + 1)
+    sns.histplot(df[col], kde=True)
+    plt.title(f'Distribution of {col}')
+plt.tight_layout()
+plt.show()
+
+# Box plots for numerical features
+plt.figure(figsize=(15, 10))
+for i, col in enumerate(['age', 'trestbps', 'chol', 'thalach', 'oldpeak']):
+    plt.subplot(2, 3, i + 1)
+    sns.boxplot(y=df[col])
+    plt.title(f'Boxplot of {col}')
+plt.tight_layout()
+plt.show()
+
+# Correlation matrix heatmap
+plt.figure(figsize=(12, 10))
+sns.heatmap(df.corr(), annot=True, cmap='coolwarm', fmt=".2f")
+plt.title('Correlation Matrix of Features')
+plt.show()
+# Check for inconsistencies in categorical variables
+for col in ['sex', 'cp', 'fbs', 'restecg', 'exang', 'slope', 'ca', 'thal', 'target']:
+    print(f"Unique values for {col}: {df[col].unique()}")
+
+# Remove duplicate rows
+df.drop_duplicates(inplace=True)
+print(f"Shape after removing duplicates: {df.shape}")
+
+# Detect and handle outliers in numerical features
+numerical_cols = ['age', 'trestbps', 'chol', 'thalach', 'oldpeak']
+for col in numerical_cols:
+    q1 = df[col].quantile(0.25)
+    q3 = df[col].quantile(0.75)
+    iqr = q3 - q1
+    lower_bound = q1 - 1.5 * iqr
+    upper_bound = q3 + 1.5 * iqr
+    df = df[(df[col] >= lower_bound) & (df[col] <= upper_bound)]
+    print(f"Shape after handling outliers in {col}: {df.shape}")
+import pandas as pd
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+
+# Identify categorical features (excluding 'target')
+categorical_cols = ['sex', 'cp', 'fbs', 'restecg', 'exang', 'slope', 'ca', 'thal']
+
+# Identify numerical features (excluding 'target')
+numerical_cols = ['age', 'trestbps', 'chol', 'thalach', 'oldpeak']
+
+# Create a column transformer for one-hot encoding and scaling
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('num', StandardScaler(), numerical_cols),
+        ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_cols)
+    ],
+    remainder='passthrough'  # Keep the target variable
+)
+
+# Fit and transform the data
+df_encoded = preprocessor.fit_transform(df)
+
+# Get feature names after one-hot encoding
+feature_names = numerical_cols + list(preprocessor.named_transformers_['cat'].get_feature_names_out(categorical_cols)) + ['target']
+
+# Create a new DataFrame from the encoded and scaled data
+df_encoded = pd.DataFrame(df_encoded, columns=feature_names)
+
+# Display the first few rows of the encoded DataFrame
+display(df_encoded.head())
+# Create interaction terms
+df_encoded['age_chol_interaction'] = df_encoded['age'] * df_encoded['chol']
+df_encoded['thalach_oldpeak_interaction'] = df_encoded['thalach'] * df_encoded['oldpeak']
+
+# Create combined indicators
+df_encoded['high_risk_profile'] = 0  # Initialize a new column
+df_encoded.loc[((df_encoded['age'] > 0.5) & (df_encoded['chol'] > 0.5)) | ((df_encoded['trestbps'] > 0.5) & (df_encoded['oldpeak'] > 0.5)), 'high_risk_profile'] = 1
+
+# Example: Combine categorical features to create a new feature
+df_encoded['cp_exang_combined'] = df_encoded['cp_1'] + df_encoded['cp_2'] + df_encoded['cp_3'] + df_encoded['exang_1']
+
+# Display the first few rows with the new features
+display(df_encoded.head())
+from sklearn.model_selection import train_test_split
+
+# Separate features (X) and target variable (y)
+X = df_encoded.drop('target', axis=1)
+y = df_encoded['target']
+
+# Split data into training and temporary sets
+X_train, X_temp, y_train, y_temp = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+
+# Split temporary set into validation and testing sets
+X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=42, stratify=y_temp)
+
+# Print the shapes of the resulting sets to verify the split
+print("X_train shape:", X_train.shape)
+print("y_train shape:", y_train.shape)
+print("X_val shape:", X_val.shape)
+print("y_val shape:", y_val.shape)
+print("X_test shape:", X_test.shape)
+print("y_test shape:", y_test.shape)
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+
+# Define the model architecture
+model = Sequential()
+model.add(Dense(64, activation='relu', input_shape=(X_train.shape[1],)))
+model.add(Dense(32, activation='relu'))
+model.add(Dense(1, activation='sigmoid'))
+
+# Compile the model
+model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+
+# Train the model
+history = model.fit(X_train, y_train, epochs=50, batch_size=32, validation_data=(X_val, y_val))
+
+# Save the trained model
+model.save('heart_disease_model.h5')
